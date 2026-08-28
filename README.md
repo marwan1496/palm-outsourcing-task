@@ -152,7 +152,7 @@ The product appears in the grid within 30 seconds, because the cache is invalida
 | Suite | Tests | Coverage |
 |---|---|---|
 | Laravel (Pest 5) | **291** | 604 assertions |
-| Next.js (Vitest 4) | **65** | |
+| Next.js (Vitest 4) | **67** | |
 | Go | **53** (83 incl. subtests) | config 100%, pool 95.7%, httpapi 92.1% |
 
 Static analysis: **Larastan level 6, zero errors**, no baseline and no suppressions. Pint clean.

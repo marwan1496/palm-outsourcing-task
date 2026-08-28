@@ -20,13 +20,32 @@ vi.mock("next/image", () => ({
   default: ({
     src,
     alt,
+    priority,
+    fill,
+    sizes,
     ...props
   }: {
     src: string;
     alt: string;
+    priority?: boolean;
+    fill?: boolean;
+    sizes?: string;
     [key: string]: unknown;
   }) => {
-    // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
-    return <img src={src} alt={alt} {...props} />;
+    // Mirror what next/image actually renders for `priority`, rather than
+    // passing the prop straight through: React drops unknown boolean props on
+    // a plain <img>, and asserting on loading/fetchpriority tests the
+    // behaviour a browser sees rather than an internal prop name.
+    return (
+      // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
+      <img
+        src={src}
+        alt={alt}
+        sizes={sizes}
+        loading={priority ? "eager" : "lazy"}
+        fetchPriority={priority ? "high" : "auto"}
+        {...props}
+      />
+    );
   },
 }));

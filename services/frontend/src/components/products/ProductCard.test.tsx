@@ -45,6 +45,22 @@ describe("ProductCard", () => {
     expect(image).toHaveAttribute("alt", product().title);
   });
 
+  // Next.js lazy-loads images by default, which delays the Largest Contentful
+  // Paint for cards a visitor can already see. Only the first row opts out.
+  it("loads its image lazily by default", () => {
+    render(<ProductCard product={product()} />);
+
+    expect(screen.getByRole("img")).toHaveAttribute("loading", "lazy");
+  });
+
+  it("loads its image eagerly when marked as above the fold", () => {
+    render(<ProductCard product={product()} priority />);
+
+    const image = screen.getByRole("img");
+    expect(image).toHaveAttribute("loading", "eager");
+    expect(image).toHaveAttribute("fetchpriority", "high");
+  });
+
   it("shows a placeholder instead of a broken image when there is none", () => {
     render(<ProductCard product={product({ image_url: null })} />);
 

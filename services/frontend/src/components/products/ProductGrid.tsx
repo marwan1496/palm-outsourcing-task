@@ -71,8 +71,15 @@ export function ProductGrid() {
       />
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
-        {data.data.map((product) => (
-          <ProductCard key={product.id} product={product} />
+        {data.data.map((product, index) => (
+          <ProductCard
+            key={product.id}
+            product={product}
+            // The first row is above the fold on every breakpoint (4 columns
+            // at the widest), so those images load eagerly to improve the
+            // Largest Contentful Paint. The rest stay lazy.
+            priority={index < 4}
+          />
         ))}
       </div>
     </div>

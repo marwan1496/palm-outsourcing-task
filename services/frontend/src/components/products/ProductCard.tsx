@@ -8,8 +8,21 @@ import { truncate } from "@/lib/format";
  *
  * A server component - it has no state and no event handlers, so there is no
  * reason to ship its JavaScript to the browser.
+ *
+ * @param priority Set for cards above the fold. Next.js lazy-loads images by
+ *                 default, which delays the Largest Contentful Paint for the
+ *                 images a visitor can already see. `priority` loads them
+ *                 eagerly with a high fetch priority instead. It must NOT be
+ *                 set on every card, or the browser contends for bandwidth
+ *                 fetching images nobody has scrolled to.
  */
-export function ProductCard({ product }: { product: Product }) {
+export function ProductCard({
+  product,
+  priority = false,
+}: {
+  product: Product;
+  priority?: boolean;
+}) {
   return (
     <article className="group flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white transition hover:border-slate-300 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700">
       <div className="relative aspect-square overflow-hidden bg-slate-100 dark:bg-slate-800">
@@ -22,6 +35,7 @@ export function ProductCard({ product }: { product: Product }) {
             // breakpoint, so it downloads a 300px file on mobile rather than
             // a 600px one. Without this, `fill` assumes full viewport width.
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+            priority={priority}
             className="object-cover transition duration-300 group-hover:scale-105"
           />
         ) : (
