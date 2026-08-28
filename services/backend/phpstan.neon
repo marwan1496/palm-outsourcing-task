@@ -1,0 +1,27 @@
+# Larastan (PHPStan for Laravel) configuration.
+#
+# Level 6 requires every parameter, return type and property to be typed, and
+# flags missing generics on iterables. It is a meaningful bar: it catches
+# nullable values used without a check, and array shapes that do not match how
+# they are consumed.
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    level: 6
+
+    paths:
+        - app
+        - config
+        - database
+        - routes
+
+    # No ignoreErrors and no baseline: the application code passes level 6
+    # cleanly. Suppressions get stale and hide real regressions, so anything
+    # flagged here is fixed rather than silenced.
+
+    # Tests are excluded: Pest's closure-based syntax rebinds $this to the test
+    # case, which static analysis cannot follow, and the tests are verified by
+    # running them rather than by analysing them.
+    excludePaths:
+        - tests

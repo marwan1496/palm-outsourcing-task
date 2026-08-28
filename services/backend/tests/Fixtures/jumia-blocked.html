@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<!--
+  What a storefront returns when it does not want to serve us: a page that is
+  perfectly valid HTML but contains no product at all.
+
+  The parser must return null for this rather than throwing or inventing
+  values. This fixture is what proves the "fail soft" behaviour.
+-->
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Access Denied</title>
+</head>
+<body>
+    <div class="error-page">
+        <h1>Pardon Our Interruption</h1>
+        <p>As you were browsing, something about your browser made us think you were a bot.</p>
+        <ul>
+            <li>You're a power user moving through this website with super-human speed.</li>
+            <li>You've disabled JavaScript in your web browser.</li>
+        </ul>
+    </div>
+</body>
+</html>

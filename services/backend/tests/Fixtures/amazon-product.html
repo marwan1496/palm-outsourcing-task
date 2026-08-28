@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<!--
+  Trimmed capture of an Amazon product page, using the modern layout where the
+  full price sits in an offscreen span for screen readers.
+
+  Note the deliberately messy #productTitle whitespace: Amazon really does wrap
+  titles across lines with tabs, which is what normaliseWhitespace() exists to
+  clean up.
+-->
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="title" content="Anker PowerCore 20000mAh Portable Charger">
+</head>
+<body>
+    <div id="dp-container">
+        <h1 id="title">
+            <span id="productTitle">
+                Anker PowerCore 20000mAh Portable Charger, Ultra High Capacity Power Bank
+            </span>
+        </h1>
+
+        <div id="corePrice_feature_div">
+            <div class="a-section a-spacing-none aok-align-center">
+                <span class="a-price a-text-price a-size-medium">
+                    <span class="a-offscreen">$49.99</span>
+                    <span aria-hidden="true">
+                        <span class="a-price-symbol">$</span>
+                        <span class="a-price-whole">49<span class="a-price-decimal">.</span></span>
+                        <span class="a-price-fraction">99</span>
+                    </span>
+                </span>
+            </div>
+        </div>
+
+        <div id="imgTagWrapperId">
+            <img id="landingImage"
+                 src="https://m.media-amazon.com/images/I/61pQPnKZ6bL._AC_SL1500_.jpg"
+                 alt="Anker PowerCore 20000mAh Portable Charger">
+        </div>
+    </div>
+</body>
+</html>

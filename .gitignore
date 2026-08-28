@@ -1,0 +1,54 @@
+# ---- Secrets -------------------------------------------------------------
+# Never commit real credentials. Each service ships a .env.example instead.
+.env
+.env.*
+!.env.example
+!.env.local.example
+*.pem
+*.key
+
+# ---- PHP / Laravel -------------------------------------------------------
+/services/backend/vendor/
+/services/backend/storage/*.key
+/services/backend/storage/framework/cache/data/*
+/services/backend/storage/framework/sessions/*
+/services/backend/storage/framework/views/*
+/services/backend/storage/logs/*
+/services/backend/public/build/
+/services/backend/public/hot
+/services/backend/public/storage
+/services/backend/.phpunit.result.cache
+/services/backend/.phpunit.cache/
+/services/backend/coverage/
+
+# ---- Node / Next.js ------------------------------------------------------
+node_modules/
+/services/frontend/.next/
+/services/frontend/out/
+/services/frontend/build/
+/services/frontend/coverage/
+/services/frontend/next-env.d.ts
+/services/frontend/.turbo/
+*.tsbuildinfo
+
+# ---- Go ------------------------------------------------------------------
+# Compiled binaries from `make build`.
+/services/proxy-manager/bin/
+/services/proxy-manager/proxyd
+/services/proxy-manager/proxyd.exe
+/services/proxy-manager/coverage.out
+# Real proxy list contains credentials; only the example is tracked.
+/services/proxy-manager/proxies.yaml
+
+# ---- Unrelated tooling ---------------------------------------------------
+# Salesforce CLI drops a per-org metadata catalog here. It predates this
+# project, is not part of it, and contains an org identifier.
+.sf/
+
+# ---- Editors / OS --------------------------------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp

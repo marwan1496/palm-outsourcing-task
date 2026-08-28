@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<!--
+  Trimmed capture of a Jumia Egypt product page.
+
+  Only the parts JumiaParser reads are kept: the JSON-LD block, the <h1>, the
+  price element and the product image. Committing this means the parser tests
+  run with no network access at all, so the suite is deterministic and still
+  passes when Jumia is down or blocking us.
+-->
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Samsung Galaxy A55 5G Dual SIM 256GB | Jumia Egypt</title>
+
+    <meta property="og:title" content="Samsung Galaxy A55 5G Dual SIM 256GB">
+    <meta property="og:image" content="https://eg.jumia.is/unsafe/fit-in/500x500/filters:fill(white)/product/72/8451/1.jpg">
+    <meta property="product:price:amount" content="18499.00">
+    <meta property="product:price:currency" content="EGP">
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "name": "Samsung Galaxy A55 5G Dual SIM 256GB - 8GB RAM - Awesome Navy",
+        "image": [
+            "https://eg.jumia.is/unsafe/fit-in/500x500/filters:fill(white)/product/72/8451/1.jpg"
+        ],
+        "sku": "SA831EL1MZ3W1NAFAMZ",
+        "brand": { "@type": "Brand", "name": "Samsung" },
+        "offers": {
+            "@type": "Offer",
+            "price": "18499.00",
+            "priceCurrency": "EGP",
+            "availability": "https://schema.org/InStock"
+        }
+    }
+    </script>
+</head>
+<body>
+    <main>
+        <div class="col12 -df -j-bet">
+            <h1 class="-fs20 -pts -pbxs">Samsung Galaxy A55 5G Dual SIM 256GB - 8GB RAM - Awesome Navy</h1>
+
+            <div class="-hr _prod">
+                <span class="-b -ltr -tal -fs24">EGP 18,499.00</span>
+                <span class="-tal -gy5 -lthr -fs16">EGP 21,999.00</span>
+                <span class="bdg _dsct _dyn -mls">-16%</span>
+            </div>
+
+            <div class="itm-img">
+                <img id="imgProduct"
+                     data-src="https://eg.jumia.is/unsafe/fit-in/500x500/filters:fill(white)/product/72/8451/1.jpg"
+                     src="data:image/gif;base64,R0lGODlhAQABAAAAACw="
+                     alt="Samsung Galaxy A55 5G Dual SIM 256GB">
+            </div>
+        </div>
+    </main>
+</body>
+</html>

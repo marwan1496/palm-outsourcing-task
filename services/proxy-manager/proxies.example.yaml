@@ -1,0 +1,33 @@
+# Proxy pool for the proxy-manager service.
+#
+# Copy this file to `proxies.yaml` (which is gitignored, because real proxy
+# URLs usually embed credentials) and fill in your own endpoints.
+#
+# Each entry needs:
+#   id     - a stable name. Laravel sends this back when reporting whether a
+#            scrape succeeded, so do not rename an id while the service runs.
+#   url    - the full proxy address, including credentials if required.
+#   weight - how often this proxy should be picked, relative to the others.
+#            A weight of 3 is handed out roughly 3x as often as a weight of 1.
+#            Use higher weights for faster or more reliable proxies.
+#
+# The service starts happily with an empty list. In that case every request to
+# /v1/proxy/next returns 503, and the Laravel scraper falls back to connecting
+# directly - so you can run the whole stack locally without owning any proxies.
+
+proxies:
+  - id: local-squid
+    url: http://127.0.0.1:3128
+    weight: 1
+
+  # - id: provider-eu-1
+  #   url: http://username:password@eu-1.example-proxies.net:8080
+  #   weight: 3
+  #
+  # - id: provider-eu-2
+  #   url: http://username:password@eu-2.example-proxies.net:8080
+  #   weight: 2
+  #
+  # - id: provider-us-1
+  #   url: socks5://username:password@us-1.example-proxies.net:1080
+  #   weight: 1

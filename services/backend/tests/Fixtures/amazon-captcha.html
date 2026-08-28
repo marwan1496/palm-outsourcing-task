@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<!--
+  Amazon's bot check. This is by far the most common non-product response a
+  scraper gets from Amazon, so AmazonParser detects it explicitly rather than
+  letting it look like a layout change - the two need very different responses
+  from an operator.
+-->
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Amazon.com</title>
+</head>
+<body>
+    <div class="a-box-inner">
+        <h4>Enter the characters you see below</h4>
+        <p>Sorry, we just need to make sure you're not a robot.</p>
+        <form method="get" action="/errors/validateCaptcha">
+            <img src="https://images-na.ssl-images-amazon.com/captcha/abcdef.jpg" alt="captcha">
+            <input type="text" name="field-keywords" autocomplete="off">
+        </form>
+        <p>To discuss automated access to Amazon data please contact
+           api-services-support@amazon.com.</p>
+    </div>
+</body>
+</html>
