@@ -60,3 +60,7 @@ Thumbs.db
 # chromedriver, downloaded per-machine by `vendor/bin/bdi detect drivers`.
 # Version-specific to the installed Chrome, so it must not be committed.
 /services/backend/drivers/
+
+# `next dev` regenerates these agent-instruction files on every run.
+/services/frontend/AGENTS.md
+/services/frontend/CLAUDE.md

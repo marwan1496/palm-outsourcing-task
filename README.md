@@ -1,185 +1,242 @@
-# Palm Task — Product Scraping Platform
+# Palm Task
 
-Three services that scrape eCommerce product pages, store them in MySQL, serve them over a secured
-JSON API, and render them in a self-refreshing grid.
+Scrapes product pages from Jumia and Amazon, stores them in MySQL, serves them over a token-secured
+API, and displays them in a Next.js grid that refreshes itself.
 
-```
-┌─────────────────┐        ┌──────────────────┐        ┌──────────────────┐
-│   Next.js 16    │        │   Laravel 13     │        │      Go 1.27     │
-│                 │        │                  │        │                  │
-│  /products      │        │  Scraping module │        │  proxy-manager   │
-│  grid, 30s poll │        │  REST API        │        │  rotation +      │
-│                 │        │  cache + auth    │        │  health checks   │
-│  ┌───────────┐  │  HTTPS │                  │  HTTP  │                  │
-│  │ BFF route │──┼───────▶│  /api/v1/*       │───────▶│  /v1/proxy/next  │
-│  │ holds the │  │ Bearer │  auth:sanctum    │X-Proxy │  /v1/proxy/:id/  │
-│  │   token   │  │  token │                  │  -Key  │       report     │
-│  └───────────┘  │        └────────┬─────────┘        └──────────────────┘
-└─────────────────┘                 │                            │
-        ▲                           ▼                            ▼
-        │                    ┌─────────────┐            ┌────────────────┐
-   browser (no               │   MySQL     │            │  proxy pool    │
-   credentials)              │  plam_task  │            │  (rotating)    │
-                             └─────────────┘            └────────────────┘
-```
+Three services: a Laravel API that does the scraping, a Next.js frontend, and a small Go service
+that manages proxy rotation.
 
-## Why it is built this way
+---
 
-Three decisions carry most of the design. Each is explained in full in
-[docs/architecture.md](docs/architecture.md).
+## What you need
 
-**The browser never holds a credential.** The Laravel API requires a Sanctum token. If the browser
-called it directly, that token would ship in the JavaScript bundle where anyone can read it. So the
-browser calls a Next.js *Backend-for-Frontend* route, which runs on the server, reads the token from
-a non-public env var, and calls Laravel. The token is never sent to the client — and there is a test
-that fails if it ever is.
-
-**The scraper cannot be used to attack our own network.** `POST /api/v1/scrape` takes a URL and
-makes the server fetch it, which is a textbook SSRF hole. `UrlGuard` requires HTTPS, an allowlisted
-storefront, a normal web port, no embedded credentials, and — the check that actually matters —
-resolves the hostname and rejects any private, loopback, or link-local address. Without that last
-rule, an allowlisted domain pointing at `169.254.169.254` would sail through.
-
-**Losing the proxy service degrades anonymity, not availability.** If the Go service is down,
-`GoProxyManagerProvider` returns "no proxy" and scraping continues over a direct connection. A
-circuit breaker stops a dead dependency from adding its timeout to every request — measured: the
-first three calls cost ~520 ms each, then the breaker opens and subsequent calls cost 0 ms.
-
-## Stack
-
-| Service | Version | Notes |
+| | Version | |
 |---|---|---|
-| Laravel | 13.29 | Slim skeleton — no `app/Http/Kernel.php`; middleware in `bootstrap/app.php` |
-| PHP | 8.4 | Readonly classes, backed enums, `#[Fillable]` attribute |
-| Guzzle | **8.1** | Via Laravel's `Http` facade, which wraps it |
-| Symfony components | **8.1** | Preserved by *not* adding Roach PHP — see below |
-| Next.js | 16.3 | App Router, React 19.2, Tailwind 4 |
-| Go | 1.27 | Stdlib `net/http` routing, `log/slog`; one dependency (`yaml.v3`) |
-| MySQL | 8.4 | Database `plam_task` |
-
-### Why not Roach PHP or Panther
-
-Both were evaluated for the scraping layer and rejected on evidence:
-
-- **Roach PHP** — `roach-php/laravel` 3.2.0 supports `laravel/framework ^10||^11||^12`, so it does
-  not support Laravel 13 at all. Its core pins `symfony/* ^7.0` and `guzzle ^7.8`, while Laravel 13
-  accepts `symfony ^7.4||^8.0` and `guzzle ^7.8.2||^8.0`. Adding it would have pinned the whole
-  application back to Symfony 7.4 and Guzzle 7. This project runs Symfony 8.1 and Guzzle 8.1.
-- **Symfony Panther** — drives real Chrome over WebDriver and never uses Guzzle, contradicting the
-  brief. Proxy and user-agent are launch-time Chrome flags, so per-request rotation would mean
-  relaunching the browser each time.
-
-Instead the pipeline borrows Roach's *architecture* — middleware chain, per-site parsers, item
-pipeline — in about 200 lines built on Laravel's own `Pipeline` class, with no dependency cost.
+| PHP | 8.4+ | with `pdo_mysql`, `mbstring`, `curl`, `intl` |
+| Composer | 2.x | |
+| Node | 20.9+ | |
+| MySQL | 8.x | |
+| Go | 1.24+ | optional, only for the proxy service |
 
 ## Setup
 
-Requires PHP 8.4+, Composer, Node 20.9+, MySQL 8, and (optionally) Go 1.24+.
-
-```bash
-git clone <repo> && cd palm_outsorucing
-```
-
-**1. Database**
+**1. Create the databases.** The second is for tests, so running them never touches your data.
 
 ```sql
 CREATE DATABASE plam_task      CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE DATABASE plam_task_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;  -- for tests
+CREATE DATABASE plam_task_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-**2. Backend**
+**2. Install everything.**
 
 ```bash
-cd services/backend
-composer install
-cp .env.example .env          # defaults already point at plam_task, root, empty password
-php artisan key:generate
-php artisan migrate
-php artisan api:token frontend    # prints a token — copy it, it is shown only once
+npm install
+npm run setup
 ```
 
-**3. Frontend**
+That installs both projects and runs the migrations. If your MySQL isn't `root` with an empty
+password, edit `services/backend/.env` first.
+
+**3. Create an API token.** The frontend needs one; no endpoint is public.
+
+```bash
+npm run token
+```
+
+Copy what it prints, then:
 
 ```bash
 cd services/frontend
-npm install
 cp .env.local.example .env.local
-# paste the token into BACKEND_API_TOKEN
 ```
 
-**4. Proxy manager** (optional — everything works without it)
+and paste the token into `BACKEND_API_TOKEN`.
+
+> That variable has no `NEXT_PUBLIC_` prefix, deliberately. Next.js only bundles `NEXT_PUBLIC_*`
+> values into the browser, so without it the token stays on the server. Adding the prefix to "make
+> it work" would publish your credential to every visitor.
+
+**4. Add some data**, so the grid isn't empty on first load.
 
 ```bash
-cd services/proxy-manager
-cp proxies.example.yaml proxies.yaml   # edit in your own proxies
-go run ./cmd/proxyd
+npm run seed
 ```
 
-## Running
-
-```powershell
-.\scripts\dev.ps1              # starts all three in separate windows
-.\scripts\dev.ps1 -SkipProxy   # without the Go service
-.\scripts\seed-demo.ps1        # fill the grid with demo products
-```
-
-Or individually:
+## Run it
 
 ```bash
-cd services/proxy-manager && go run ./cmd/proxyd      # :8081
-cd services/backend       && php artisan serve        # :8000
-cd services/frontend      && npm run dev              # :3000
+npm run dev
 ```
 
-Then open **http://localhost:3000/products**.
+One command, the same on Windows, macOS and Linux. It starts three things:
 
-## Scraping a real page
+- the Laravel API on **:8000**
+- a queue worker, which is what actually runs the scrapes
+- the Next.js frontend on **:3000**
+
+Use `npm run dev:all` to include the Go proxy service if you have Go. It's optional; without it,
+scraping simply connects directly.
+
+Then open **http://localhost:3000**.
+
+---
+
+## Seeing the data
+
+Go to **http://localhost:3000/products**.
+
+You'll see a grid of product cards with titles, prices and images. Top right, "Updated Ns ago"
+counts up and resets every 30 seconds. That's the page polling for changes, which is the refresh
+behaviour the brief asks for. One seeded product has no image on purpose, so the placeholder is
+visible too.
+
+## Testing it through the UI
+
+Quickest way to watch the scraper work.
+
+1. Open **http://localhost:3000/jobs**
+2. Paste a couple of URLs into the box, one per line:
+
+   ```
+   https://www.jumia.com.eg/oxi-powder-fine-fragrance-8kg-1kg-45488685.html
+   https://www.ebay.com/itm/123
+   ```
+
+   > Product listings come and go. If that first one 404s by the time you read this, open
+   > [jumia.com.eg](https://www.jumia.com.eg), click any product, and copy its URL instead.
+
+3. Hit **Scrape**.
+
+The first is queued. The second is rejected straight away with the reason underneath, because eBay
+isn't a storefront this supports. One bad URL in a list shouldn't throw away the good ones, so each
+is judged on its own.
+
+Watch the row go **pending → running → completed**, usually inside fifteen seconds. When it lands
+you'll see the product title and price, and it turns up on the products page as well.
+
+Try pasting `https://169.254.169.254/latest/meta-data/` too. It's refused before any request is
+made. That address is the cloud metadata endpoint, and an API that fetches arbitrary URLs is a route
+into a private network if nothing is guarding it.
+
+### If a job fails
+
+Jumia sits behind Cloudflare, which sometimes decides a request looks automated and serves a
+challenge instead of the page. Failed rows show why, and offer a **Retry** button.
+
+Blocked pages are also retried automatically through a real browser, which usually clears the
+challenge. That's enabled in the local `.env` and off in `.env.example`, because it needs Chrome
+plus a matching driver:
 
 ```bash
 cd services/backend
-php artisan products:scrape https://www.jumia.com.eg/<some-product>.html
-php artisan products:scrape <url> --queue     # via the queue instead
+vendor/bin/bdi detect drivers   # downloads a chromedriver matching your Chrome
 ```
 
-The product appears in the grid within 30 seconds, because the cache is invalidated on write.
+Parsing is covered separately by saved HTML fixtures, so the test suite proves it works whether or
+not a site is cooperating on the day.
 
-## Tests
+## Testing it through the API
 
-```powershell
-.\scripts\test-all.ps1        # everything, plus Pint / Larastan / tsc
+Everything below needs the token from step 3.
+
+```bash
+TOKEN="paste-your-token-here"
 ```
 
-| Suite | Tests | Coverage |
-|---|---|---|
-| Laravel (Pest 5) | **291** | 604 assertions |
-| Next.js (Vitest 4) | **67** | |
-| Go | **53** (83 incl. subtests) | config 100%, pool 95.7%, httpapi 92.1% |
+**List products.** Watch the `X-Cache` header: `MISS` first time, `HIT` after.
 
-Static analysis: **Larastan level 6, zero errors**, no baseline and no suppressions. Pint clean.
+```bash
+curl -i -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8000/api/v1/products
+```
 
-Full details in [docs/testing.md](docs/testing.md).
+**Without a token** you get `401`, not data:
 
-## Documentation
+```bash
+curl -i http://127.0.0.1:8000/api/v1/products
+```
 
-| Document | What it covers |
+**Queue a batch.** Up to ten URLs; the reply lists what was accepted and what wasn't.
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/scrape \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"urls":[
+        "https://www.jumia.com.eg/oxi-powder-fine-fragrance-8kg-1kg-45488685.html",
+        "https://www.ebay.com/itm/1"
+      ]}'
+```
+
+That returns `202` with one job queued, one rejected, and a `batch_id`.
+
+**Check on them:**
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8000/api/v1/scrape-jobs
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8000/api/v1/scrape-jobs?status=failed"
+```
+
+**Retry a failed one:**
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8000/api/v1/scrape-jobs/1/retry
+```
+
+**Try an internal address.** Returns `422`, queues nothing:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/scrape \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"url":"https://169.254.169.254/latest/meta-data/"}'
+```
+
+Every endpoint and status code is listed in [docs/api.md](docs/api.md).
+
+## Running the tests
+
+```bash
+npm run test      # backend and frontend
+npm run test:all  # adds the Go service
+npm run lint      # Pint, Larastan level 6, TypeScript
+```
+
+Expect **369 backend** and **96 frontend** tests passing, plus 53 in Go. Larastan runs at level 6
+with no baseline and nothing suppressed.
+
+---
+
+## Two things worth knowing
+
+**The proxy pool is empty by default**, so scraping connects directly. Real rotating proxies cost
+money. The rotation, health checking and failover are all built and tested, and you can watch them
+work using local stand-ins:
+
+```bash
+npm run proxy:demo
+```
+
+That starts three fake proxies, one deliberately broken, plus the manager. Requests are handed out
+in proportion to weight, and the broken one is benched after three failures. Walkthrough in
+[docs/testing.md](docs/testing.md).
+
+**Live scraping depends on the sites.** Cloudflare's decisions change day to day. If a live scrape
+fails during a demo that's the internet, not the code, and it's exactly why the parsers are tested
+against committed HTML fixtures instead.
+
+## Where to read more
+
+| | |
 |---|---|
-| [docs/architecture.md](docs/architecture.md) | Request flow and every significant decision, with the reasoning |
-| [docs/api.md](docs/api.md) | Endpoint reference with examples |
-| [docs/testing.md](docs/testing.md) | How to run each suite, what is covered, what is not |
-| [docs/presentation-guide.md](docs/presentation-guide.md) | Ordered code walkthrough for a live demo |
-| [docs/voice-note-script.md](docs/voice-note-script.md) | Timed ~60-second summary script |
-
-Each service also has its own README: [backend](services/backend), [frontend](services/frontend),
-[proxy-manager](services/proxy-manager/README.md).
+| [docs/architecture.md](docs/architecture.md) | How it fits together, and why each significant decision was made |
+| [docs/api.md](docs/api.md) | Every endpoint, parameter and status code |
+| [docs/testing.md](docs/testing.md) | What's covered, how to run each suite, and what isn't |
+| [docs/presentation-guide.md](docs/presentation-guide.md) | A walkthrough of the code, in order |
+| [docs/voice-note-script.md](docs/voice-note-script.md) | The one-minute summary |
 
 ## Layout
 
 ```
-services/
-├── backend/           Laravel 13 — API, scraping module, caching, auth
-│   └── app/Scraping/  the scraping module: contracts, middleware, parsers, pipeline
-├── frontend/          Next.js 16 — /products page, BFF route
-└── proxy-manager/     Go — proxy rotation and health checking
-docs/                  architecture, API reference, testing, presentation notes
-scripts/               dev.ps1, test-all.ps1, seed-demo.ps1
+services/backend/        Laravel 13 — API, scraping, caching, auth
+services/frontend/       Next.js 16 — products grid, jobs screen
+services/proxy-manager/  Go — proxy rotation and health checks
+docs/                    architecture, API reference, testing notes
 ```

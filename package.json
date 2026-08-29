@@ -4,8 +4,9 @@
   "private": true,
   "description": "Scrapes eCommerce product pages, stores them in MySQL, serves them over a secured API, and renders them in Next.js.",
   "scripts": {
-    "setup": "npm run setup:backend && npm run setup:frontend",
-    "setup:backend": "cd services/backend && composer install && php artisan migrate --force",
+    "setup": "npm run setup:env && npm run setup:backend && npm run setup:frontend",
+    "setup:env": "node -e \"const fs=require('fs');[['services/backend/.env.example','services/backend/.env'],['services/frontend/.env.local.example','services/frontend/.env.local']].forEach(([s,d])=>{if(fs.existsSync(d)){console.log('kept '+d)}else{fs.copyFileSync(s,d);console.log('created '+d)}})\"",
+    "setup:backend": "cd services/backend && composer install && php artisan key:generate --force && php artisan migrate --force",
     "setup:frontend": "cd services/frontend && npm install",
 
     "dev": "concurrently --names \"api,queue,web\" --prefix-colors \"blue,yellow,green\" --kill-others \"npm:dev:api\" \"npm:dev:queue\" \"npm:dev:web\"",
