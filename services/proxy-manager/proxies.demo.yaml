@@ -1,0 +1,34 @@
+# Demo pool — three LOCAL fake proxies, for showing rotation without paying
+# for real ones.
+#
+# Start them first, each in its own terminal so you can watch the traffic:
+#
+#   go run ./cmd/fakeproxy -port 3128 -name proxy-a
+#   go run ./cmd/fakeproxy -port 3129 -name proxy-b
+#   go run ./cmd/fakeproxy -port 3130 -name proxy-c-broken -fail
+#
+# Then run the manager against this file:
+#
+#   PROXY_CONFIG=proxies.demo.yaml go run ./cmd/proxyd
+#
+# These are all the same machine, so they do NOT hide your IP and are useless
+# for real scraping. But the proxy-manager cannot tell the difference, so
+# rotation, health checking, benching and recovery all behave exactly as they
+# would with a real pool.
+
+proxies:
+  # Weight 2 — should be handed out roughly twice as often as proxy-b.
+  - id: proxy-a
+    url: http://127.0.0.1:3128
+    weight: 2
+
+  - id: proxy-b
+    url: http://127.0.0.1:3129
+    weight: 1
+
+  # Started with -fail, so every request through it is rejected. Watch this one
+  # get benched after 3 consecutive failures, then recover if you restart it
+  # without -fail.
+  - id: proxy-c-broken
+    url: http://127.0.0.1:3130
+    weight: 1

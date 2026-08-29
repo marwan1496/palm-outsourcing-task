@@ -83,6 +83,89 @@ go run ./cmd/proxyd          # or: make run
 make build                   # binary into bin/
 ```
 
+## Demoing rotation without paying for proxies
+
+Real rotating proxies cost money, which makes this service awkward to show: with
+an empty pool it just answers "no proxy available" and you have to take the
+rotation logic on trust.
+
+`cmd/fakeproxy` is a small local HTTP proxy for exactly this. Run several on
+different ports and the manager cannot tell them from real ones — rotation,
+health checking, benching and recovery all behave normally.
+
+> They all run on your own machine, so they do **not** hide your IP and are
+> useless for real scraping. They demonstrate the *mechanism*, not anonymity.
+
+**1. Start three, each in its own terminal:**
+
+```bash
+go run ./cmd/fakeproxy -port 3128 -name proxy-a
+go run ./cmd/fakeproxy -port 3129 -name proxy-b
+go run ./cmd/fakeproxy -port 3130 -name proxy-c-broken -fail   # rejects everything
+```
+
+**2. Start the manager against the demo pool** (`proxies.demo.yaml`, where
+proxy-a has weight 2 and the others weight 1):
+
+```bash
+PROXY_CONFIG=proxies.demo.yaml PROXY_API_KEY=demo-secret-key go run ./cmd/proxyd
+```
+
+**3. Watch it rotate:**
+
+```bash
+for i in $(seq 1 12); do
+  curl -s -H "X-Proxy-Key: demo-secret-key" http://127.0.0.1:8081/v1/proxy/next
+done
+```
+
+Weighting is visible in the output — 12 requests split **6 / 3 / 3**, matching
+the 2:1:1 weights:
+
+```
+proxy-a, proxy-b, proxy-c-broken, proxy-a, proxy-a, proxy-b, ...
+```
+
+**4. Watch the broken one get benched.** The health checker probes through each
+proxy; after 3 consecutive failures `proxy-c-broken` drops out:
+
+```bash
+curl -s -H "X-Proxy-Key: demo-secret-key" http://127.0.0.1:8081/v1/proxies
+```
+
+```
+healthy 2/3
+proxy-a          healthy=True   benched_until=-
+proxy-b          healthy=True   benched_until=-
+proxy-c-broken   healthy=False  benched_until=2026-08-29T12:48:37Z
+```
+
+Rotation now skips it entirely. Restart that proxy *without* `-fail` and the
+health checker returns it to service on its own.
+
+**5. Prove real traffic flows through it.** With the backend pointed at the
+manager:
+
+```bash
+cd ../backend
+PROXY_MANAGER_ENABLED=true PROXY_MANAGER_KEY=demo-secret-key \
+  php artisan products:scrape https://www.jumia.com.eg/<product>.html
+```
+
+The chosen proxy logs the connection:
+
+```
+15:47:57 [proxy-a] #4 CONNECT www.jumia.com.eg:443
+```
+
+That single line is the whole integration in one place: Laravel asked Go for a
+proxy, Go picked one by weight and health, and the scrape went through it.
+
+> Jumia sits behind Cloudflare and will often still answer `403` here — the fake
+> proxy is on your own machine, so your IP has not changed. The point of this
+> demo is the *rotation mechanism*; defeating bot protection needs genuinely
+> different IPs.
+
 ## Tests
 
 ```bash
