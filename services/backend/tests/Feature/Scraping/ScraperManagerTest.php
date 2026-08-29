@@ -6,11 +6,13 @@ use App\Enums\ProductSource;
 use App\Models\Product;
 use App\Scraping\Exceptions\ScrapeFailedException;
 use App\Scraping\Exceptions\UnsafeUrlException;
+use App\Scraping\Fetchers\GuzzleFetcher;
 use App\Scraping\Parsers\AmazonParser;
 use App\Scraping\Parsers\JumiaParser;
 use App\Scraping\Pipeline\ItemPipeline;
 use App\Scraping\Pipeline\ScraperPipeline;
 use App\Scraping\ScraperManager;
+use App\Scraping\Support\BlockDetector;
 use App\Scraping\Support\UrlGuard;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -153,11 +155,13 @@ describe('handling failures', function () {
         $this->assertDatabaseCount('products', 0);
     });
 
-    it('fails when the page contains no product', function () {
+    it('reports a block page as a block, not a parse failure', function () {
         Http::fake(['*' => Http::response(fixtureHtml('jumia-blocked.html'))]);
 
+        // BlockDetector recognises the anti-bot wording, so the error names the
+        // real cause instead of sending someone off to debug the parser.
         expect(fn () => $this->manager->scrape($this->url))
-            ->toThrow(ScrapeFailedException::class, 'No product could be parsed');
+            ->toThrow(ScrapeFailedException::class, 'Anti-bot interstitial');
 
         $this->assertDatabaseCount('products', 0);
     });
@@ -173,9 +177,10 @@ describe('handling failures', function () {
         // Bypass the guard so we reach the parser-selection step: this proves
         // the two checks are genuinely independent.
         $manager = new ScraperManager(
-            pipeline: app(ScraperPipeline::class),
+            fetcher: new GuzzleFetcher(app(ScraperPipeline::class)),
             items: app(ItemPipeline::class),
             urlGuard: new UrlGuard(['ebay.com'], ['https'], verifyDns: false),
+            blockDetector: new BlockDetector,
             parsers: [new JumiaParser],
             logger: Log::channel(),
         );

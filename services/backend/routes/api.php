@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Api\V1\ProductController;
 use App\Http\Controllers\Api\V1\ScrapeController;
+use App\Http\Controllers\Api\V1\ScrapeJobController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -27,30 +28,27 @@ Route::prefix('v1')
     ->middleware(['auth:sanctum', 'throttle:api'])
     ->group(function (): void {
 
-        // Read endpoints. Cached, ETagged, and polled every 30s by the frontend.
         Route::get('/products', [ProductController::class, 'index'])->name('products.index');
         Route::get('/products/{product}', [ProductController::class, 'show'])->name('products.show');
 
-        // Write endpoint. Queues a scrape; far more expensive, so it carries
-        // its own tighter rate limit on top of the group's.
+        // Accepts a single "url" or a "urls" array of up to 10. Carries its own
+        // tighter rate limit because each URL is a real outbound fetch.
         Route::post('/scrape', [ScrapeController::class, 'store'])
             ->middleware('throttle:scrape')
             ->name('scrape.store');
+
+        Route::get('/scrape-jobs', [ScrapeJobController::class, 'index'])->name('scrape-jobs.index');
+        Route::get('/scrape-jobs/{scrapeJob}', [ScrapeJobController::class, 'show'])->name('scrape-jobs.show');
+
+        Route::post('/scrape-jobs/{scrapeJob}/retry', [ScrapeJobController::class, 'retry'])
+            ->middleware('throttle:scrape')
+            ->name('scrape-jobs.retry');
     });
 
-/*
-| The task brief names /api/products specifically. The canonical route is the
-| versioned one above; this alias keeps the literal path in the brief working
-| so both URLs resolve to the same controller.
-*/
 Route::get('/products', [ProductController::class, 'index'])
     ->middleware(['auth:sanctum', 'throttle:api'])
     ->name('products.alias');
 
-/*
-| Who am I - lets the frontend verify at startup that its token is valid,
-| rather than discovering it is not on the first product fetch.
-*/
 Route::get('/user', fn (Request $request) => $request->user())
     ->middleware('auth:sanctum')
     ->name('user.show');

@@ -11,9 +11,11 @@
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^3.0",
         "symfony/css-selector": "^8.1",
-        "symfony/dom-crawler": "^8.1"
+        "symfony/dom-crawler": "^8.1",
+        "symfony/panther": "^2.4"
     },
     "require-dev": {
+        "dbrekelmans/bdi": "^1.4",
         "fakerphp/faker": "^1.23",
         "larastan/larastan": "^3.10",
         "laravel/pail": "^1.2.5",

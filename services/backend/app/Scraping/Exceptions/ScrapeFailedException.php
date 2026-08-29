@@ -37,6 +37,17 @@ final class ScrapeFailedException extends RuntimeException
     }
 
     /**
+     * The site actively turned us away, rather than simply not having the page.
+     *
+     * Worth its own message: "blocked by Cloudflare" and "the layout changed"
+     * look identical from the outside but call for completely different fixes.
+     */
+    public static function blocked(string $url, string $reason): self
+    {
+        return new self(sprintf('Blocked while fetching [%s]: %s.', $url, $reason));
+    }
+
+    /**
      * No parser is registered for this URL's storefront.
      */
     public static function noParserFor(string $url): self

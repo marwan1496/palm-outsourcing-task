@@ -56,3 +56,7 @@ Thumbs.db
 # Fake proxy binary built by `go build ./cmd/fakeproxy`.
 /services/proxy-manager/bin/fakeproxy
 /services/proxy-manager/bin/fakeproxy.exe
+
+# chromedriver, downloaded per-machine by `vendor/bin/bdi detect drivers`.
+# Version-specific to the installed Chrome, so it must not be committed.
+/services/backend/drivers/

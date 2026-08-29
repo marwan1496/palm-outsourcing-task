@@ -156,6 +156,34 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Browser fallback
+    |--------------------------------------------------------------------------
+    |
+    | Some sites don't block on headers, they block on things a plain HTTP
+    | client can't fake. Cloudflare fingerprints the TLS handshake and serves a
+    | challenge that only clears if JavaScript actually runs, which is why
+    | rotating user-agents alone doesn't get past it.
+    |
+    | With this on, a scrape that comes back as a Cloudflare challenge or a
+    | CAPTCHA is retried once through a real headless Chrome (Symfony Panther).
+    |
+    | Off by default, for three reasons:
+    |
+    |   1. The brief asks for Guzzle. This is a fallback, not a replacement.
+    |   2. It's slow - seconds per page instead of milliseconds - and a browser
+    |      process costs far more memory than an HTTP request.
+    |   3. It needs Chrome and a matching chromedriver on the machine.
+    |
+    | Install the driver with: vendor/bin/bdi detect drivers
+    |
+    */
+    'browser_fallback' => [
+        'enabled' => (bool) env('SCRAPER_BROWSER_FALLBACK', false),
+        'timeout' => (int) env('SCRAPER_BROWSER_TIMEOUT', 30),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Product listing cache
     |--------------------------------------------------------------------------
     |

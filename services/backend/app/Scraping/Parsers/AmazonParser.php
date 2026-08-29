@@ -7,6 +7,7 @@ namespace App\Scraping\Parsers;
 use App\Enums\ProductSource;
 use App\Scraping\Contracts\ProductParser;
 use App\Scraping\DTO\ScrapedProduct;
+use App\Scraping\Support\BlockDetector;
 use Symfony\Component\DomCrawler\Crawler;
 
 /**
@@ -26,6 +27,10 @@ class AmazonParser implements ProductParser
 {
     use ParsesProductPages;
 
+    public function __construct(
+        private readonly BlockDetector $blockDetector = new BlockDetector,
+    ) {}
+
     public function source(): ProductSource
     {
         return ProductSource::Amazon;
@@ -36,7 +41,10 @@ class AmazonParser implements ProductParser
      */
     public function parse(string $html, string $url): ?ScrapedProduct
     {
-        if (trim($html) === '' || $this->looksLikeCaptcha($html)) {
+        // The CAPTCHA check lives in BlockDetector rather than here, so the
+        // fetcher can react to a block before a parser is ever reached and
+        // there is only one list of markers to keep current.
+        if (trim($html) === '' || $this->blockDetector->looksLikeCaptcha($html)) {
             return null;
         }
 
@@ -100,20 +108,6 @@ class AmazonParser implements ProductParser
         $fraction = $this->textOf($crawler, 'span.a-price-fraction') ?? '00';
 
         return rtrim(trim($whole), '.,').'.'.trim($fraction);
-    }
-
-    /**
-     * Whether the page is Amazon's bot check rather than a product.
-     */
-    private function looksLikeCaptcha(string $html): bool
-    {
-        foreach (['Enter the characters you see below', 'api-services-support@amazon.com', '/errors/validateCaptcha'] as $marker) {
-            if (str_contains($html, $marker)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**

@@ -6,39 +6,54 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\V1\ScrapeProductRequest;
-use App\Jobs\ScrapeProductJob;
+use App\Http\Resources\V1\ScrapeJobResource;
+use App\Scraping\ScrapeBatchDispatcher;
 use Illuminate\Http\JsonResponse;
 
 /**
- * Accepts a URL to scrape.
+ * Accepts URLs to scrape.
  *
- * The work is queued rather than done inline. Scraping takes seconds - a
- * proxy handshake, a slow page, up to three retries with backoff - and holding
- * an HTTP connection open for that is a bad trade: the client times out, the
- * PHP worker is blocked, and a retry means starting over.
- *
- * So this returns 202 Accepted immediately and the queue does the work. The
- * frontend polls /products every 30 seconds anyway, so a newly scraped product
- * appears on its own without the client tracking a job id.
+ * The work is queued rather than done inline. Scraping takes seconds — a proxy
+ * handshake, a slow page, up to three retries with backoff — and holding an
+ * HTTP connection open for that times the client out and blocks a PHP worker.
+ * So this returns 202 immediately and the queue does the work, while the jobs
+ * screen polls for progress.
  */
 class ScrapeController extends Controller
 {
+    public function __construct(
+        private readonly ScrapeBatchDispatcher $dispatcher,
+    ) {}
+
     /**
-     * Queue a scrape.
+     * Queue one or more URLs.
      *
-     * By the time this method runs, ScrapeProductRequest has already confirmed
-     * the URL is well-formed, passes the SSRF guard, and has a parser - so a
-     * queued job is never certain-to-fail work.
+     * Returns 202 with both an accepted and a rejected list. A batch is allowed
+     * to partly succeed: if someone pastes ten URLs and one has a typo, the
+     * other nine still run. Only a batch where nothing at all was accepted is
+     * a 422, because then there's no work to report progress on.
      */
     public function store(ScrapeProductRequest $request): JsonResponse
     {
-        $url = (string) $request->validated('url');
+        $result = $this->dispatcher->dispatch($request->urls());
 
-        ScrapeProductJob::dispatch($url);
+        if ($result->isCompleteFailure()) {
+            return response()->json([
+                'message' => 'None of the submitted URLs could be scraped.',
+                'errors' => ['urls' => array_column($result->rejected, 'reason')],
+                'rejected' => $result->rejected,
+            ], 422);
+        }
 
         return response()->json([
-            'message' => 'The product page has been queued for scraping.',
-            'url' => $url,
+            'message' => sprintf(
+                '%d URL(s) queued for scraping%s.',
+                $result->acceptedCount(),
+                $result->rejectedCount() > 0 ? sprintf(', %d rejected', $result->rejectedCount()) : '',
+            ),
+            'batch_id' => $result->batchId,
+            'accepted' => ScrapeJobResource::collection($result->accepted)->resolve(),
+            'rejected' => $result->rejected,
         ], 202);
     }
 }

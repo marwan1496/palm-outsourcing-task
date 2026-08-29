@@ -8,6 +8,8 @@ use App\Enums\ProductSource;
 use App\Models\Product;
 use App\Observers\ProductObserver;
 use App\Scraping\Contracts\ProxyProvider;
+use App\Scraping\Fetchers\BrowserFetcher;
+use App\Scraping\Fetchers\GuzzleFetcher;
 use App\Scraping\Middleware\RetryWithBackoff;
 use App\Scraping\Middleware\RotateProxy;
 use App\Scraping\Middleware\RotateUserAgent;
@@ -16,6 +18,7 @@ use App\Scraping\Pipeline\ScraperPipeline;
 use App\Scraping\Proxy\DirectProxyProvider;
 use App\Scraping\Proxy\GoProxyManagerProvider;
 use App\Scraping\ScraperManager;
+use App\Scraping\Support\BlockDetector;
 use App\Scraping\Support\UrlGuard;
 use App\Scraping\Support\UserAgentPool;
 use Illuminate\Http\Client\Factory as HttpFactory;
@@ -156,12 +159,31 @@ class AppServiceProvider extends ServiceProvider
             );
 
             return new ScraperManager(
-                pipeline: $this->app->make(ScraperPipeline::class),
+                fetcher: new GuzzleFetcher($this->app->make(ScraperPipeline::class)),
                 items: $this->app->make(ItemPipeline::class),
                 urlGuard: $this->app->make(UrlGuard::class),
+                blockDetector: $this->app->make(BlockDetector::class),
                 parsers: $parsers,
                 logger: Log::channel(),
+                // Null unless explicitly enabled, so a browser is never
+                // launched by accident on a machine without Chrome.
+                browserFetcher: $this->browserFetcher(),
             );
         });
+    }
+
+    /**
+     * The browser fallback, or null when it is turned off.
+     */
+    private function browserFetcher(): ?BrowserFetcher
+    {
+        if (! config('scraping.browser_fallback.enabled', false)) {
+            return null;
+        }
+
+        return new BrowserFetcher(
+            logger: Log::channel(),
+            timeoutSeconds: (int) config('scraping.browser_fallback.timeout', 30),
+        );
     }
 }

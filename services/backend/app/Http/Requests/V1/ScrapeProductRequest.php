@@ -4,28 +4,32 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\V1;
 
-use App\Scraping\Exceptions\UnsafeUrlException;
-use App\Scraping\ScraperManager;
-use App\Scraping\Support\UrlGuard;
-use Closure;
+use App\Scraping\ScrapeBatchDispatcher;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
- * Validates a request to scrape a product URL.
+ * Validates a scrape submission.
  *
- * Validation happens here rather than in the controller so that an unsafe or
- * unsupported URL is rejected with a 422 *before* a job is queued. Queueing a
- * job that is certain to fail wastes a worker and hides the real error from
- * the caller.
+ * Two shapes are accepted:
  *
- * The URL rules run in increasing order of cost: format, then length, then
- * the SSRF guard (which may perform a DNS lookup), then parser support.
+ *   {"url": "https://..."}                  a single page
+ *   {"urls": ["https://...", "https://..."]} up to ten
+ *
+ * The single form is kept because it's what the API originally shipped with and
+ * what the docs and the artisan command already use. Both normalise to a list,
+ * so nothing downstream has to care which was sent.
+ *
+ * Note what is deliberately NOT validated here: whether each URL is safe and
+ * supported. That check produces a per-URL reason, and a FormRequest can only
+ * pass or fail the whole request. Since a batch is allowed to partly succeed,
+ * ScrapeBatchDispatcher makes that judgement instead and reports both lists.
  */
 class ScrapeProductRequest extends FormRequest
 {
     /**
-     * Authorisation is handled by the auth:sanctum middleware on the route,
-     * so any request that reaches this point is already authenticated.
+     * The route already sits behind auth:sanctum, so anything reaching this
+     * point is authenticated.
      */
     public function authorize(): bool
     {
@@ -33,69 +37,61 @@ class ScrapeProductRequest extends FormRequest
     }
 
     /**
-     * Validation rules.
-     *
-     * @return array<string, array<int, mixed>>
+     * @return array<string, mixed>
      */
     public function rules(): array
     {
         return [
-            'url' => [
-                'required',
-                'string',
-                // Matches the source_url column, so a URL that passes
-                // validation is always storable.
-                'max:512',
-                'url:https',
-                $this->safeUrlRule(),
-                $this->supportedStorefrontRule(),
-            ],
+            'url' => ['sometimes', 'required_without:urls', 'string', 'max:512'],
+
+            'urls' => ['sometimes', 'required_without:url', 'array', 'min:1', 'max:'.ScrapeBatchDispatcher::MAX_URLS],
+            'urls.*' => ['required', 'string', 'max:512'],
         ];
     }
 
     /**
-     * Reject URLs that fail the SSRF guard.
+     * Reject a request that sends neither field, which would otherwise slip
+     * through as an empty-but-valid payload.
      *
-     * The guard's own message names the rule that failed - wrong scheme,
-     * disallowed host, non-public address - without revealing which internal
-     * addresses exist.
+     * @return list<callable(Validator): void>
      */
-    private function safeUrlRule(): Closure
+    public function after(): array
     {
-        return function (string $attribute, mixed $value, Closure $fail): void {
-            $guard = app(UrlGuard::class);
-
-            try {
-                $guard->assertSafe((string) $value);
-            } catch (UnsafeUrlException $e) {
-                $fail($e->getMessage());
-            }
-        };
+        return [
+            function (Validator $validator): void {
+                if (! $this->has('url') && ! $this->has('urls')) {
+                    $validator->errors()->add('urls', 'Provide either a "url" string or a "urls" array.');
+                }
+            },
+        ];
     }
 
     /**
-     * Reject URLs from storefronts we have no parser for.
+     * Both shapes, flattened to the list the dispatcher works with.
+     *
+     * @return list<string>
      */
-    private function supportedStorefrontRule(): Closure
+    public function urls(): array
     {
-        return function (string $attribute, mixed $value, Closure $fail): void {
-            if (app(ScraperManager::class)->parserFor((string) $value) === null) {
-                $fail('No parser is available for this storefront. Supported sites: Jumia, Amazon.');
-            }
-        };
+        $urls = $this->validated('urls', []);
+
+        if ($this->filled('url')) {
+            $urls[] = $this->validated('url');
+        }
+
+        return array_values(array_filter(array_map('trim', $urls)));
     }
 
     /**
-     * Human-readable messages for the built-in rules.
-     *
      * @return array<string, string>
      */
     public function messages(): array
     {
         return [
-            'url.required' => 'A product URL is required.',
-            'url.url' => 'The product URL must be a valid HTTPS URL.',
-            'url.max' => 'The product URL is too long (maximum 512 characters).',
+            'urls.max' => 'You can submit at most '.ScrapeBatchDispatcher::MAX_URLS.' URLs at once.',
+            'urls.array' => 'The "urls" field must be an array of URL strings.',
+            'url.max' => 'The URL is too long (maximum 512 characters).',
+            'urls.*.max' => 'One of the URLs is too long (maximum 512 characters).',
         ];
     }
 }
