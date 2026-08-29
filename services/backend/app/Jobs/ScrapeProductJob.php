@@ -32,11 +32,17 @@ class ScrapeProductJob implements ShouldQueue
     public int $tries = 3;
 
     /**
-     * Wait a minute, then five, before retrying.
+     * Wait ten seconds, then thirty, before retrying.
+     *
+     * Kept short on purpose. The scraping pipeline already retries the HTTP
+     * request three times with its own backoff, so by the time a job fails the
+     * transient stuff has been ruled out. Job-level retries cover slower
+     * problems, a proxy pool briefly exhausted or a site rate limiting us, and
+     * minutes of waiting would just make a working queue look dead.
      *
      * @var list<int>
      */
-    public array $backoff = [60, 300];
+    public array $backoff = [10, 30];
 
     public int $timeout = 120;
 
@@ -81,10 +87,13 @@ class ScrapeProductJob implements ShouldQueue
 
             $this->fail($e);
         } catch (ScrapeFailedException $e) {
-            // Might succeed later: a block can lift, a proxy can recover. Let
-            // the queue retry, and only record failure once attempts run out
-            // (see failed() below) so the UI doesn't flash "failed" between
-            // attempts that are still coming.
+            // Might succeed later: a block can lift, a proxy can recover. Put
+            // the row back to pending so the UI shows a job waiting to retry
+            // rather than one apparently stuck mid-run, and keep the reason
+            // visible. Only failed() marks it properly failed, once the queue
+            // has given up.
+            $record?->markRetrying($e->getMessage());
+
             Log::warning('Scrape job failed.', [
                 'url' => $this->url,
                 'attempt' => $this->attempts(),

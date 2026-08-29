@@ -61,6 +61,14 @@
         <env name="SCRAPER_VERIFY_DNS" value="false"/>
         <env name="PROXY_MANAGER_ENABLED" value="false"/>
 
+        <!--
+            Pinned off so no test can launch a real browser, and so the suite
+            behaves the same whatever a developer has in their local .env.
+            The fallback's decision logic is covered with a fake PageFetcher in
+            BrowserFallbackTest; BrowserFetcher itself is verified by hand.
+        -->
+        <env name="SCRAPER_BROWSER_FALLBACK" value="false"/>
+
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>

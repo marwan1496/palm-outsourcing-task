@@ -66,3 +66,76 @@ export type Product = z.infer<typeof productSchema>;
 export type ProductSource = z.infer<typeof productSourceSchema>;
 export type PaginationMeta = z.infer<typeof paginationMetaSchema>;
 export type ProductList = z.infer<typeof productListSchema>;
+
+/* -------------------------------------------------------------------------
+ * Scrape jobs
+ * ---------------------------------------------------------------------- */
+
+/** Mirrors App\Enums\ScrapeJobStatus. */
+export const scrapeJobStatusSchema = z.enum([
+  "pending",
+  "running",
+  "completed",
+  "failed",
+]);
+
+/**
+ * One submitted URL and how it turned out.
+ *
+ * Matches App\Http\Resources\V1\ScrapeJobResource.
+ */
+export const scrapeJobSchema = z.object({
+  id: z.number().int().positive(),
+  batch_id: z.string(),
+  url: z.string(),
+
+  status: scrapeJobStatusSchema,
+  status_label: z.string(),
+  is_terminal: z.boolean(),
+  is_retryable: z.boolean(),
+
+  /** Why it failed, shown as-is in the UI. Null while it is still going. */
+  error: z.string().nullable(),
+  attempts: z.number().int().nonnegative(),
+  duration_ms: z.number().int().nonnegative().nullable(),
+
+  /** Only present once the job produced something. */
+  product: productSchema.nullable().optional(),
+
+  started_at: z.iso.datetime({ offset: true }).nullable(),
+  finished_at: z.iso.datetime({ offset: true }).nullable(),
+  created_at: z.iso.datetime({ offset: true }),
+});
+
+export const scrapeJobListSchema = z.object({
+  data: z.array(scrapeJobSchema),
+  meta: paginationMetaSchema.extend({
+    /**
+     * How many jobs across ALL pages are still pending or running.
+     *
+     * This drives the polling speed. Counting the current page instead would
+     * be wrong the moment there is more than one page.
+     */
+    unfinished: z.number().int().nonnegative(),
+  }),
+});
+
+/** A URL the API refused, and the reason it gave. */
+export const rejectedUrlSchema = z.object({
+  url: z.string(),
+  reason: z.string(),
+});
+
+/** The 202 from POST /scrape. A batch may partly succeed. */
+export const scrapeSubmissionSchema = z.object({
+  message: z.string(),
+  batch_id: z.string(),
+  accepted: z.array(scrapeJobSchema),
+  rejected: z.array(rejectedUrlSchema),
+});
+
+export type ScrapeJob = z.infer<typeof scrapeJobSchema>;
+export type ScrapeJobStatus = z.infer<typeof scrapeJobStatusSchema>;
+export type ScrapeJobList = z.infer<typeof scrapeJobListSchema>;
+export type RejectedUrl = z.infer<typeof rejectedUrlSchema>;
+export type ScrapeSubmission = z.infer<typeof scrapeSubmissionSchema>;

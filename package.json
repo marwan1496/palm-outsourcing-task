@@ -1,0 +1,49 @@
+{
+  "name": "palm-task",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Scrapes eCommerce product pages, stores them in MySQL, serves them over a secured API, and renders them in Next.js.",
+  "scripts": {
+    "setup": "npm run setup:backend && npm run setup:frontend",
+    "setup:backend": "cd services/backend && composer install && php artisan migrate --force",
+    "setup:frontend": "cd services/frontend && npm install",
+
+    "dev": "concurrently --names \"api,queue,web\" --prefix-colors \"blue,yellow,green\" --kill-others \"npm:dev:api\" \"npm:dev:queue\" \"npm:dev:web\"",
+    "dev:all": "concurrently --names \"proxy,api,queue,web\" --prefix-colors \"magenta,blue,yellow,green\" --kill-others \"npm:dev:proxy\" \"npm:dev:api\" \"npm:dev:queue\" \"npm:dev:web\"",
+
+    "dev:api": "cd services/backend && php artisan serve --port=8000",
+    "dev:queue": "cd services/backend && php artisan queue:work --tries=3 --sleep=1",
+    "dev:web": "cd services/frontend && npm run dev",
+    "dev:proxy": "cd services/proxy-manager && go run ./cmd/proxyd",
+
+    "test": "npm run test:backend && npm run test:frontend",
+    "test:all": "npm run test:backend && npm run test:frontend && npm run test:proxy",
+    "test:backend": "cd services/backend && php vendor/bin/pest",
+    "test:frontend": "cd services/frontend && npm test",
+    "test:proxy": "cd services/proxy-manager && go test -cover ./...",
+
+    "lint": "npm run lint:backend && npm run lint:frontend && npm run lint:proxy",
+    "lint:backend": "cd services/backend && php vendor/bin/pint --test && php vendor/bin/phpstan analyse --memory-limit=1G --no-progress",
+    "lint:frontend": "cd services/frontend && npm run typecheck",
+    "lint:proxy": "cd services/proxy-manager && go vet ./...",
+
+    "format": "cd services/backend && php vendor/bin/pint",
+
+    "seed": "cd services/backend && php artisan db:seed",
+    "fresh": "cd services/backend && php artisan migrate:fresh --seed",
+    "token": "cd services/backend && php artisan api:token frontend",
+
+    "proxy:demo": "concurrently --names \"a,b,broken,mgr\" --prefix-colors \"cyan,cyan,red,magenta\" --kill-others \"npm:proxy:demo:a\" \"npm:proxy:demo:b\" \"npm:proxy:demo:broken\" \"npm:proxy:demo:mgr\"",
+    "proxy:demo:a": "cd services/proxy-manager && go run ./cmd/fakeproxy -port 3128 -name proxy-a",
+    "proxy:demo:b": "cd services/proxy-manager && go run ./cmd/fakeproxy -port 3129 -name proxy-b",
+    "proxy:demo:broken": "cd services/proxy-manager && go run ./cmd/fakeproxy -port 3130 -name proxy-c-broken -fail",
+    "proxy:demo:mgr": "cd services/proxy-manager && cross-env PROXY_CONFIG=proxies.demo.yaml PROXY_API_KEY=demo-secret-key go run ./cmd/proxyd"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5",
+    "cross-env": "^10.1.0"
+  },
+  "engines": {
+    "node": ">=20.9.0"
+  }
+}

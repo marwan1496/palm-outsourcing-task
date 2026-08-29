@@ -147,7 +147,9 @@ describe('when the fallback is disabled', function () {
             ->toThrow(ScrapeFailedException::class, 'Cloudflare challenge page');
     });
 
-    it('is off by default in the container', function () {
+    // Pinned off in phpunit.xml, so no test can start a browser and the suite
+    // behaves identically whatever a developer has in their local .env.
+    it('is off while the test suite runs', function () {
         expect(config('scraping.browser_fallback.enabled'))->toBeFalse();
     });
 });

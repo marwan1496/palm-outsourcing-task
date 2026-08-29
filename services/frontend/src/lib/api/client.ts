@@ -1,6 +1,15 @@
 import "server-only";
 
-import { productListSchema, type ProductList } from "./schemas";
+import { z } from "zod";
+
+import {
+  productListSchema,
+  scrapeJobListSchema,
+  scrapeSubmissionSchema,
+  type ProductList,
+  type ScrapeJobList,
+  type ScrapeSubmission,
+} from "./schemas";
 
 /**
  * Server-side client for the Laravel API.
@@ -17,6 +26,13 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /**
+     * The raw error body, when the API sent something structured worth
+     * passing on. A 422 from the scrape endpoint lists which URLs were
+     * rejected and why, and flattening that to a single string would throw
+     * away the only detail the user actually needs.
+     */
+    readonly details?: unknown,
   ) {
     super(message);
     this.name = "ApiError";
@@ -59,31 +75,93 @@ export interface FetchProductsOptions {
 export async function fetchProducts(
   options: FetchProductsOptions = {},
 ): Promise<ProductList> {
-  const { baseUrl, token } = config();
-
   const query = new URLSearchParams();
   if (options.page) query.set("page", String(options.page));
   if (options.perPage) query.set("per_page", String(options.perPage));
   if (options.source) query.set("source", options.source);
 
-  const url = `${baseUrl}/api/v1/products${query.size ? `?${query}` : ""}`;
+  return request(`/api/v1/products${query.size ? `?${query}` : ""}`, productListSchema);
+}
+
+/** Options for listing scrape jobs. */
+export interface FetchJobsOptions {
+  page?: number;
+  perPage?: number;
+  status?: string;
+  batchId?: string;
+}
+
+/**
+ * List scrape jobs, newest first.
+ */
+export async function fetchScrapeJobs(
+  options: FetchJobsOptions = {},
+): Promise<ScrapeJobList> {
+  const query = new URLSearchParams();
+  if (options.page) query.set("page", String(options.page));
+  if (options.perPage) query.set("per_page", String(options.perPage));
+  if (options.status) query.set("status", options.status);
+  if (options.batchId) query.set("batch_id", options.batchId);
+
+  return request(
+    `/api/v1/scrape-jobs${query.size ? `?${query}` : ""}`,
+    scrapeJobListSchema,
+  );
+}
+
+/**
+ * Submit URLs for scraping.
+ *
+ * The API allows a batch to partly succeed, so the result carries both the
+ * jobs it queued and the URLs it turned away.
+ */
+export async function submitScrape(urls: string[]): Promise<ScrapeSubmission> {
+  return request("/api/v1/scrape", scrapeSubmissionSchema, {
+    method: "POST",
+    body: JSON.stringify({ urls }),
+  });
+}
+
+/**
+ * Re-queue a failed job.
+ */
+export async function retryScrapeJob(id: number): Promise<void> {
+  await request(`/api/v1/scrape-jobs/${id}/retry`, z.unknown(), { method: "POST" });
+}
+
+/**
+ * One place where the token is attached, the response checked and the payload
+ * validated.
+ *
+ * Every call goes through here rather than repeating the fetch/validate dance,
+ * which also means there is exactly one line in the codebase that sends the
+ * Authorization header.
+ */
+async function request<T>(
+  path: string,
+  schema: z.ZodType<T>,
+  init: RequestInit = {},
+): Promise<T> {
+  const { baseUrl, token } = config();
 
   let response: Response;
 
   try {
-    response = await fetch(url, {
+    response = await fetch(`${baseUrl}${path}`, {
+      ...init,
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "application/json",
+        ...(init.body ? { "Content-Type": "application/json" } : {}),
+        ...init.headers,
       },
-      // The browser polls every 30 seconds and the backend does its own
-      // caching, so Next.js must not add a third cache layer that serves
-      // stale data the user cannot refresh.
+      // The client polls, and the backend does its own caching, so Next.js
+      // must not add a third layer serving data the user cannot refresh.
       cache: "no-store",
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(15_000),
     });
-  } catch (error) {
-    // Almost always "the Laravel server is not running" - worth saying so
+  } catch {
+    // Almost always "the Laravel server is not running". Worth saying so
     // plainly rather than surfacing a raw TypeError.
     throw new ApiError(
       `Could not reach the API at ${baseUrl}. Is the Laravel server running?`,
@@ -92,6 +170,17 @@ export async function fetchProducts(
   }
 
   if (!response.ok) {
+    // A 422 carries useful per-URL detail, so pass its body through rather
+    // than flattening it to a generic message.
+    if (response.status === 422) {
+      const body = await response.json().catch(() => null);
+      throw new ApiError(
+        body?.message ?? "The API rejected the request.",
+        422,
+        body,
+      );
+    }
+
     throw new ApiError(
       response.status === 401
         ? "The API rejected our token. Re-issue it with `php artisan api:token`."
@@ -100,11 +189,11 @@ export async function fetchProducts(
     );
   }
 
-  const body: unknown = await response.json();
+  const body: unknown = await response.json().catch(() => null);
 
   // Validate at the boundary. A shape change is caught here, once, with a
-  // clear message - not later inside a component.
-  const parsed = productListSchema.safeParse(body);
+  // clear message, not later inside a component.
+  const parsed = schema.safeParse(body);
 
   if (!parsed.success) {
     throw new ApiError(

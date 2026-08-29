@@ -34,6 +34,21 @@ use Illuminate\Support\Carbon;
 class ScrapeJob extends Model
 {
     /**
+     * Defaults applied to a new instance.
+     *
+     * The column has a database default of 0, but that is only applied on the
+     * way *out* of the database. A model returned straight from create() still
+     * has attempts = null, which then serialises as null and breaks any client
+     * expecting a number. Setting it here means the in-memory object matches
+     * the schema no matter how it was made.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'attempts' => 0,
+    ];
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array
@@ -93,6 +108,25 @@ class ScrapeJob extends Model
             'status' => ScrapeJobStatus::Failed,
             'error' => mb_substr($reason, 0, 500),
             'finished_at' => now(),
+        ]);
+    }
+
+    /**
+     * An attempt failed, but the queue will try again.
+     *
+     * Status goes back to pending rather than staying on running, because the
+     * job is not running: it is sitting out a backoff. Leaving it as "running"
+     * makes a queue that is working normally look like one that has hung.
+     *
+     * The error from the last attempt is kept, so the UI can show what went
+     * wrong while still reporting that another try is coming.
+     */
+    public function markRetrying(string $reason): void
+    {
+        $this->update([
+            'status' => ScrapeJobStatus::Pending,
+            'error' => mb_substr($reason, 0, 500),
+            'started_at' => null,
         ]);
     }
 
