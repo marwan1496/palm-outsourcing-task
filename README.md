@@ -118,22 +118,6 @@ Try pasting `https://169.254.169.254/latest/meta-data/` too. It's refused before
 made. That address is the cloud metadata endpoint, and an API that fetches arbitrary URLs is a route
 into a private network if nothing is guarding it.
 
-### If a job fails
-
-Jumia sits behind Cloudflare, which sometimes decides a request looks automated and serves a
-challenge instead of the page. Failed rows show why, and offer a **Retry** button.
-
-Blocked pages are also retried automatically through a real browser, which usually clears the
-challenge. That's enabled in the local `.env` and off in `.env.example`, because it needs Chrome
-plus a matching driver:
-
-```bash
-cd services/backend
-vendor/bin/bdi detect drivers   # downloads a chromedriver matching your Chrome
-```
-
-Parsing is covered separately by saved HTML fixtures, so the test suite proves it works whether or
-not a site is cooperating on the day.
 
 ## Testing it through the API
 
@@ -238,7 +222,7 @@ against committed HTML fixtures instead.
 
 ## How it works
 
-The five decisions worth explaining.
+The three decisions worth explaining.
 
 **Scraping is a middleware pipeline on Guzzle.** Retry sits outermost, then proxy rotation, then
 user-agent rotation, then the request. That order matters: a retry re-enters everything below it, so
@@ -249,13 +233,6 @@ I evaluated Roach PHP for this and turned it down. Its Laravel adapter caps at L
 core pins Symfony 7 while Laravel 13 allows Symfony 8 — Composer would have resolved that by quietly
 downgrading the whole Symfony tree. So I kept Roach's architecture, the middleware chain and item
 pipeline, and dropped the dependency. This runs Symfony 8.1 and Guzzle 8.1 as a result.
-
-**The scrape endpoint can't be turned on our own network.** It takes a URL and makes the server
-fetch it, which unguarded is a proxy into anything the server can reach — and a firewall doesn't
-help, because the request originates inside it. So `UrlGuard` requires HTTPS, an allowlisted
-storefront, a normal port and no embedded credentials, then resolves the hostname and rejects
-private, loopback and link-local addresses. That last rule is the one that matters: an allowlist
-assumes the domain owner is honest about where it points, and DNS is entirely theirs to control.
 
 **The browser never holds a credential.** There's no way to hide a secret in client-side JavaScript,
 so the browser calls a Next.js route that runs on the server, and that route holds the token.
@@ -268,12 +245,6 @@ the database driver so the stack needs nothing beyond MySQL. Instead the version
 cache key and a write bumps it, orphaning the old entries to expire on their own. Works on any
 driver, and switching to Redis later is one line in `.env`.
 
-**Cloudflare gets a real browser.** Live scraping kept failing in a way that took a while to pin
-down: curl could fetch a Jumia product page while the scraper got a 403 on the same URL, and no
-header combination fixed it, because Cloudflare fingerprints the TLS handshake and expects
-JavaScript to run. Blocked pages now fall back to a headless Chrome, which clears the challenge.
-It's off by default, since the brief asks for Guzzle and a browser costs seconds per page against
-milliseconds for an HTTP request.
 
 ## Layout
 
