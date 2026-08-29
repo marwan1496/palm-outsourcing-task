@@ -93,6 +93,15 @@ trait ParsesProductPages
                 continue;
             }
 
+            // A category or search page carries a Product block for every item
+            // it lists. Reading the first one would store an unrelated product
+            // under whatever URL was requested, and because that product is
+            // perfectly valid the job would report success. Refusing to read
+            // listings at all is the only safe answer.
+            if ($this->looksLikeListing($decoded)) {
+                return null;
+            }
+
             // A page may ship several blocks (Product, BreadcrumbList, …), and
             // they may be wrapped in a @graph array.
             foreach ($this->candidateNodes($decoded) as $node) {
@@ -103,6 +112,41 @@ trait ParsesProductPages
         }
 
         return null;
+    }
+
+    /**
+     * Whether this JSON-LD describes a list of products rather than one product.
+     *
+     * Two signals, either of which is conclusive:
+     *
+     *   - A container type. `CollectionPage`, `ItemList` and `SearchResultsPage`
+     *     all mean "here are several things".
+     *   - More than one Product node. A product page describes one product;
+     *     anything describing several is a listing.
+     *
+     * This matters because a dead product URL on Jumia redirects to a category
+     * page that returns 200 and carries ten Product blocks. Reading the first
+     * one stores a completely unrelated item under the requested URL, and since
+     * it validates cleanly the job reports success. The failure is silent,
+     * which makes it worse than a crash.
+     *
+     * @param  array<mixed>  $decoded
+     */
+    private function looksLikeListing(array $decoded): bool
+    {
+        $json = json_encode($decoded);
+
+        if ($json === false) {
+            return false;
+        }
+
+        foreach (['"ItemList"', '"CollectionPage"', '"SearchResultsPage"'] as $containerType) {
+            if (str_contains($json, $containerType)) {
+                return true;
+            }
+        }
+
+        return substr_count($json, '"Product"') > 1;
     }
 
     /**

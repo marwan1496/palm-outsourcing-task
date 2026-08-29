@@ -26,12 +26,25 @@ class ScrapeController extends Controller
     ) {}
 
     /**
-     * Queue one or more URLs.
+     * Queue URLs for scraping
      *
-     * Returns 202 with both an accepted and a rejected list. A batch is allowed
-     * to partly succeed: if someone pastes ten URLs and one has a typo, the
-     * other nine still run. Only a batch where nothing at all was accepted is
-     * a 422, because then there's no work to report progress on.
+     * Send either a single `url`, or a `urls` array of up to 10:
+     *
+     * ```json
+     * { "url": "https://www.jumia.com.eg/some-product.html" }
+     * ```
+     * ```json
+     * { "urls": ["https://www.jumia.com.eg/a.html", "https://www.amazon.eg/dp/B01LR8CIRC"] }
+     * ```
+     *
+     * A batch is allowed to partly succeed. Paste ten URLs with one typo in them and the other nine
+     * still run, so the 202 carries an `accepted` list of queued jobs alongside a `rejected` list
+     * with a reason for each. Only a batch where nothing at all was accepted is a 422, because then
+     * there is no work to report progress on.
+     *
+     * Every URL has to be HTTPS, from a supported storefront, and pass the SSRF guard. Try
+     * `https://169.254.169.254/latest/meta-data/` to watch that last one refuse a request before it
+     * is made.
      */
     public function store(ScrapeProductRequest $request): JsonResponse
     {

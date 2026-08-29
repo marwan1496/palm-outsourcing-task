@@ -17,18 +17,34 @@ const STYLES: Record<ScrapeJobStatus, string> = {
     "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300",
 };
 
+/**
+ * A job waiting to retry is amber, not grey.
+ *
+ * It's "pending" in the database like a job that hasn't started, but the two
+ * mean very different things and showing them the same way made a queue that
+ * was retrying normally look like it had failed.
+ */
+const AWAITING_RETRY =
+  "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300";
+
 export function StatusBadge({
   status,
   label,
+  isAwaitingRetry = false,
 }: {
   status: ScrapeJobStatus;
   label: string;
+  isAwaitingRetry?: boolean;
 }) {
+  const showsActivity = status === "running" || isAwaitingRetry;
+
   return (
     <span
-      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${STYLES[status]}`}
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${
+        isAwaitingRetry ? AWAITING_RETRY : STYLES[status]
+      }`}
     >
-      {status === "running" && (
+      {showsActivity && (
         <span
           className="h-1.5 w-1.5 animate-pulse rounded-full bg-current"
           aria-hidden="true"

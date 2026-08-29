@@ -64,3 +64,8 @@ Thumbs.db
 # `next dev` regenerates these agent-instruction files on every run.
 /services/frontend/AGENTS.md
 /services/frontend/CLAUDE.md
+
+# Internal notes: architecture, API reference, testing notes, and the
+# presentation and voice-note scripts. Kept locally, not shipped.
+# The live API reference is Swagger at /docs/api instead.
+/docs/

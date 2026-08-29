@@ -91,6 +91,14 @@ export const scrapeJobSchema = z.object({
 
   status: scrapeJobStatusSchema,
   status_label: z.string(),
+
+  /**
+   * Waiting to try again, rather than waiting to start for the first time.
+   *
+   * Both are "pending" in the database, but showing them identically made a
+   * queue that was retrying normally look like it had failed.
+   */
+  is_awaiting_retry: z.boolean(),
   is_terminal: z.boolean(),
   is_retryable: z.boolean(),
 

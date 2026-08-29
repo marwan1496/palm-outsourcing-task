@@ -37,7 +37,16 @@ class ScrapeJobResource extends JsonResource
             'url' => $this->job->url,
 
             'status' => $this->job->status->value,
-            'status_label' => $this->job->status->label(),
+
+            // A pending job that already has an error and an attempt behind it
+            // isn't waiting to start, it's waiting to try again. Saying
+            // "Pending" next to a red error message reads as failed, which
+            // made a perfectly healthy queue look broken.
+            'status_label' => $this->job->isAwaitingRetry()
+                ? 'Retrying'
+                : $this->job->status->label(),
+
+            'is_awaiting_retry' => $this->job->isAwaitingRetry(),
             'is_terminal' => $this->job->status->isTerminal(),
             'is_retryable' => $this->job->status->isRetryable(),
 

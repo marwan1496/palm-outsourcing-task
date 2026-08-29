@@ -144,6 +144,21 @@ class ScrapeJob extends Model
     }
 
     /**
+     * Whether this job is waiting to be tried again rather than waiting to start.
+     *
+     * Both look like "pending" in the database. The difference is that this one
+     * has already run and failed at least once, which is worth showing
+     * differently: a first-time pending job is normal, one on its third attempt
+     * is a sign something is wrong.
+     */
+    public function isAwaitingRetry(): bool
+    {
+        return $this->status === ScrapeJobStatus::Pending
+            && $this->attempts > 0
+            && $this->error !== null;
+    }
+
+    /**
      * How long the scrape took, in milliseconds, once it has finished.
      */
     public function durationMs(): ?int

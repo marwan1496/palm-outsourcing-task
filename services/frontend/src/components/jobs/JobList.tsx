@@ -163,7 +163,11 @@ function JobRow({
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          <StatusBadge status={job.status} label={job.status_label} />
+          <StatusBadge
+            status={job.status}
+            label={job.status_label}
+            isAwaitingRetry={job.is_awaiting_retry}
+          />
 
           {job.is_retryable && (
             <button
@@ -186,7 +190,17 @@ function JobRow({
       )}
 
       {job.error && (
-        <p className="mt-3 border-t border-slate-100 pt-3 text-xs text-red-600 dark:border-slate-800 dark:text-red-400">
+        // Amber while a retry is still coming, red once it has genuinely
+        // failed. The same message means different things depending on
+        // whether the queue has given up.
+        <p
+          className={`mt-3 border-t border-slate-100 pt-3 text-xs dark:border-slate-800 ${
+            job.is_awaiting_retry
+              ? "text-amber-700 dark:text-amber-400"
+              : "text-red-600 dark:text-red-400"
+          }`}
+        >
+          {job.is_awaiting_retry && <span className="font-medium">Will retry — </span>}
           {job.error}
         </p>
       )}

@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Jobs\ScrapeProductJob;
 use App\Scraping\Exceptions\ScrapeFailedException;
 use App\Scraping\Exceptions\UnsafeUrlException;
+use App\Scraping\ScrapeBatchDispatcher;
 use App\Scraping\ScraperManager;
 use Illuminate\Console\Command;
 
@@ -35,13 +35,13 @@ class ScrapeProductCommand extends Command
     /**
      * Run the command.
      */
-    public function handle(ScraperManager $scraper): int
+    public function handle(ScraperManager $scraper, ScrapeBatchDispatcher $dispatcher): int
     {
         /** @var list<string> $urls */
         $urls = $this->argument('url');
 
         if ($this->option('queue')) {
-            return $this->dispatchAll($urls);
+            return $this->dispatchAll($dispatcher, $urls);
         }
 
         $succeeded = 0;
@@ -84,16 +84,34 @@ class ScrapeProductCommand extends Command
     /**
      * Queue the URLs instead of scraping inline.
      *
+     * Goes through ScrapeBatchDispatcher rather than dispatching jobs directly, so a CLI
+     * submission creates the same tracking rows the API does and shows up on the jobs page.
+     * Previously these were invisible there, which made it look like the command had done
+     * nothing.
+     *
      * @param  list<string>  $urls
      */
-    private function dispatchAll(array $urls): int
+    private function dispatchAll(ScrapeBatchDispatcher $dispatcher, array $urls): int
     {
-        foreach ($urls as $url) {
-            ScrapeProductJob::dispatch($url);
-            $this->line("Queued <comment>{$url}</comment>");
+        $result = $dispatcher->dispatch($urls);
+
+        foreach ($result->accepted as $job) {
+            $this->line("Queued <comment>{$job->url}</comment>");
         }
 
-        $this->components->info(sprintf('Queued %d URL(s). Run `php artisan queue:work` to process them.', count($urls)));
+        foreach ($result->rejected as $rejection) {
+            $this->components->error("{$rejection['url']} - {$rejection['reason']}");
+        }
+
+        if ($result->isCompleteFailure()) {
+            return self::FAILURE;
+        }
+
+        $this->components->info(sprintf(
+            'Queued %d URL(s) as batch %s. Run `php artisan queue:work` to process them.',
+            $result->acceptedCount(),
+            $result->batchId,
+        ));
 
         return self::SUCCESS;
     }

@@ -271,3 +271,74 @@ describe('the job lifecycle', function () {
         $this->assertDatabaseCount('scrape_jobs', 0);
     });
 });
+
+describe('waiting to retry versus never started', function () {
+    beforeEach(fn () => Sanctum::actingAs(User::factory()->create()));
+
+    // Both are "pending" in the database. Showing them the same way made a
+    // queue that was retrying normally look like it had failed.
+    it('labels a job between attempts as Retrying', function () {
+        makeJob([
+            'status' => ScrapeJobStatus::Pending,
+            'attempts' => 1,
+            'error' => 'Blocked: Cloudflare challenge page.',
+        ]);
+
+        $this->getJson('/api/v1/scrape-jobs')
+            ->assertOk()
+            ->assertJsonPath('data.0.status_label', 'Retrying')
+            ->assertJsonPath('data.0.is_awaiting_retry', true);
+    });
+
+    it('still labels a job that has never run as Pending', function () {
+        makeJob(['status' => ScrapeJobStatus::Pending]);
+
+        $this->getJson('/api/v1/scrape-jobs')
+            ->assertOk()
+            ->assertJsonPath('data.0.status_label', 'Pending')
+            ->assertJsonPath('data.0.is_awaiting_retry', false);
+    });
+
+    it('does not call a genuinely failed job a retrying one', function () {
+        makeJob([
+            'status' => ScrapeJobStatus::Failed,
+            'attempts' => 3,
+            'error' => 'Gave up.',
+        ]);
+
+        $this->getJson('/api/v1/scrape-jobs')
+            ->assertOk()
+            ->assertJsonPath('data.0.status_label', 'Failed')
+            ->assertJsonPath('data.0.is_awaiting_retry', false);
+    });
+});
+
+describe('scraping from the command line', function () {
+    // These used to be invisible on the jobs page, which made it look like the
+    // command had done nothing at all.
+    it('creates a tracking row so CLI scrapes appear on the jobs page', function () {
+        Queue::fake();
+
+        $this->artisan('products:scrape', [
+            'url' => ['https://www.jumia.com.eg/from-the-cli.html'],
+            '--queue' => true,
+        ])->assertSuccessful();
+
+        $this->assertDatabaseHas('scrape_jobs', [
+            'url' => 'https://www.jumia.com.eg/from-the-cli.html',
+            'status' => ScrapeJobStatus::Pending->value,
+        ]);
+    });
+
+    it('reports rejected URLs instead of queueing them', function () {
+        Queue::fake();
+
+        $this->artisan('products:scrape', [
+            'url' => ['https://www.ebay.com/itm/1'],
+            '--queue' => true,
+        ])->assertFailed();
+
+        $this->assertDatabaseCount('scrape_jobs', 0);
+        Queue::assertNothingPushed();
+    });
+});

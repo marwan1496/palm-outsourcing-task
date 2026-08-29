@@ -15,6 +15,7 @@ function job(overrides: Partial<ScrapeJob> = {}): ScrapeJob {
     url: "https://www.jumia.com.eg/product.html",
     status: "pending",
     status_label: "Pending",
+    is_awaiting_retry: false,
     is_terminal: false,
     is_retryable: false,
     error: null,
@@ -242,6 +243,60 @@ describe("retrying", () => {
         expect.objectContaining({ method: "POST" }),
       ),
     );
+  });
+});
+
+describe("waiting to retry", () => {
+  // A job between attempts is "pending" in the database, same as one that has
+  // never run. Showing them identically made a queue that was retrying
+  // normally look like it had failed outright.
+  it("says Retrying rather than Pending", async () => {
+    mockOnce(
+      listResponse([
+        job({
+          status: "pending",
+          status_label: "Retrying",
+          is_awaiting_retry: true,
+          attempts: 1,
+          error: "Blocked: Cloudflare challenge page.",
+        }),
+      ]),
+    );
+
+    renderList();
+
+    expect(await screen.findByText("Retrying")).toBeInTheDocument();
+  });
+
+  it("marks the error as temporary rather than final", async () => {
+    mockOnce(
+      listResponse([
+        job({
+          status: "pending",
+          status_label: "Retrying",
+          is_awaiting_retry: true,
+          attempts: 1,
+          error: "Blocked: Cloudflare challenge page.",
+        }),
+      ]),
+    );
+
+    renderList();
+
+    expect(await screen.findByText(/Will retry/)).toBeInTheDocument();
+  });
+
+  it("does not offer a Retry button while one is already coming", async () => {
+    mockOnce(
+      listResponse([
+        job({ is_awaiting_retry: true, attempts: 1, error: "boom", is_retryable: false }),
+      ]),
+    );
+
+    renderList();
+    await screen.findByText(/Will retry/);
+
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
   });
 });
 

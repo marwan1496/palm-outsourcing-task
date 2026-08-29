@@ -109,13 +109,24 @@ class ScrapeProductJob implements ShouldQueue
      */
     public function failed(?Throwable $exception): void
     {
-        $this->record()?->markFailed(
-            $exception?->getMessage() ?? 'The job failed without reporting a reason.',
-        );
+        $reason = $exception?->getMessage() ?? 'The job failed without reporting a reason.';
+        $record = $this->record();
+
+        $record?->markFailed($reason);
+
+        // Say so loudly when there was no row to update. Without this the job
+        // disappears without trace and the jobs page shows nothing at all,
+        // which is far harder to diagnose than a visible failure.
+        if ($this->scrapeJobId !== null && $record === null) {
+            Log::error('Scrape job failed but its tracking row is gone.', [
+                'url' => $this->url,
+                'scrape_job_id' => $this->scrapeJobId,
+            ]);
+        }
 
         Log::error('Scrape job exhausted all attempts.', [
             'url' => $this->url,
-            'reason' => $exception?->getMessage(),
+            'reason' => $reason,
         ]);
     }
 

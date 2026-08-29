@@ -39,6 +39,9 @@ class ScrapeProductRequest extends FormRequest
     /**
      * @return array<string, mixed>
      */
+    /**
+     * @return array<string, mixed>
+     */
     public function rules(): array
     {
         return [

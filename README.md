@@ -189,7 +189,19 @@ curl -X POST http://127.0.0.1:8000/api/v1/scrape \
   -d '{"url":"https://169.254.169.254/latest/meta-data/"}'
 ```
 
-Every endpoint and status code is listed in [docs/api.md](docs/api.md).
+## Or use Swagger
+
+If you would rather click than curl, the whole API is documented and executable at:
+
+**http://127.0.0.1:8000/docs/api**
+
+Paste your token into **Authorize** at the top and every endpoint on the page becomes runnable. It
+is generated from the code itself, from the validation rules and API resources, so it cannot drift
+out of date the way a hand-written spec does. The raw OpenAPI 3.1 document is at
+`/docs/api.json` if you want to import it into Postman or Insomnia.
+
+Worth trying there: call `GET /api/v1/products` twice and watch `X-Cache` go from `MISS` to `HIT`,
+then `POST /api/v1/scrape` with a mix of good and bad URLs to see a batch partly succeed.
 
 ## Running the tests
 
@@ -214,23 +226,54 @@ work using local stand-ins:
 npm run proxy:demo
 ```
 
-That starts three fake proxies, one deliberately broken, plus the manager. Requests are handed out
-in proportion to weight, and the broken one is benched after three failures. Walkthrough in
-[docs/testing.md](docs/testing.md).
+That starts three fake proxies, one deliberately broken, plus the manager. Ask for a dozen proxies
+and they come out 6/3/3, matching the configured 2:1:1 weights, interleaved rather than in runs.
+The broken one is benched after three failures and skipped entirely until it recovers.
 
 **Live scraping depends on the sites.** Cloudflare's decisions change day to day. If a live scrape
 fails during a demo that's the internet, not the code, and it's exactly why the parsers are tested
 against committed HTML fixtures instead.
 
-## Where to read more
+---
 
-| | |
-|---|---|
-| [docs/architecture.md](docs/architecture.md) | How it fits together, and why each significant decision was made |
-| [docs/api.md](docs/api.md) | Every endpoint, parameter and status code |
-| [docs/testing.md](docs/testing.md) | What's covered, how to run each suite, and what isn't |
-| [docs/presentation-guide.md](docs/presentation-guide.md) | A walkthrough of the code, in order |
-| [docs/voice-note-script.md](docs/voice-note-script.md) | The one-minute summary |
+## How it works
+
+The five decisions worth explaining.
+
+**Scraping is a middleware pipeline on Guzzle.** Retry sits outermost, then proxy rotation, then
+user-agent rotation, then the request. That order matters: a retry re-enters everything below it, so
+attempt two goes out through a different proxy with a different user-agent. It isn't the same
+request repeated, it's one that looks like a different visitor.
+
+I evaluated Roach PHP for this and turned it down. Its Laravel adapter caps at Laravel 12, and its
+core pins Symfony 7 while Laravel 13 allows Symfony 8 — Composer would have resolved that by quietly
+downgrading the whole Symfony tree. So I kept Roach's architecture, the middleware chain and item
+pipeline, and dropped the dependency. This runs Symfony 8.1 and Guzzle 8.1 as a result.
+
+**The scrape endpoint can't be turned on our own network.** It takes a URL and makes the server
+fetch it, which unguarded is a proxy into anything the server can reach — and a firewall doesn't
+help, because the request originates inside it. So `UrlGuard` requires HTTPS, an allowlisted
+storefront, a normal port and no embedded credentials, then resolves the hostname and rejects
+private, loopback and link-local addresses. That last rule is the one that matters: an allowlist
+assumes the domain owner is honest about where it points, and DNS is entirely theirs to control.
+
+**The browser never holds a credential.** There's no way to hide a secret in client-side JavaScript,
+so the browser calls a Next.js route that runs on the server, and that route holds the token.
+`src/lib/api/client.ts` starts with `import "server-only"`, which fails the build if a client
+component ever imports it. Verified against the production bundle: the token, the env var name, the
+backend URL and the string `Authorization` are all absent from every file in `.next/static/`.
+
+**Cache invalidation without cache tags.** Tags only work on Redis and Memcached, and this runs on
+the database driver so the stack needs nothing beyond MySQL. Instead the version number lives in the
+cache key and a write bumps it, orphaning the old entries to expire on their own. Works on any
+driver, and switching to Redis later is one line in `.env`.
+
+**Cloudflare gets a real browser.** Live scraping kept failing in a way that took a while to pin
+down: curl could fetch a Jumia product page while the scraper got a 403 on the same URL, and no
+header combination fixed it, because Cloudflare fingerprints the TLS handshake and expects
+JavaScript to run. Blocked pages now fall back to a headless Chrome, which clears the challenge.
+It's off by default, since the brief asks for Guzzle and a browser costs seconds per page against
+milliseconds for an HTTP request.
 
 ## Layout
 
@@ -238,5 +281,4 @@ against committed HTML fixtures instead.
 services/backend/        Laravel 13 — API, scraping, caching, auth
 services/frontend/       Next.js 16 — products grid, jobs screen
 services/proxy-manager/  Go — proxy rotation and health checks
-docs/                    architecture, API reference, testing notes
 ```
